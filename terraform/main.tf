@@ -15,7 +15,10 @@ variable "enable_payments" { type = string }
 variable "enable_vip" { type = string }
 variable "logo_url" { type = string }   # <--- NUEVO
 variable "industry" { type = string }   # <--- NUEVO
-variable "n8n_chat_url" { type = string; default = "https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/bot-chat" } # REEMPLAZA CON TU URL REAL
+variable "n8n_chat_url" { 
+  type = string 
+  default = "https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/bot-chat" 
+  } 
 
 provider "aws" {
   region = "us-east-1"
