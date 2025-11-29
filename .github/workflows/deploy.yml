@@ -29,6 +29,8 @@ jobs:
           terraform apply -auto-approve \
             -var="client_id=${{ github.event.client_payload.CLIENT_ID }}" \
             -var="instance_size=${{ github.event.client_payload.INSTANCE_SIZE }}" \
+            -var="logo_url='${{ github.event.client_payload.ENV_VARS.LOGO_URL }}'" \
+            -var="industry='${{ github.event.client_payload.ENV_VARS.INDUSTRY }}'" \
             -var="welcome_msg='${{ github.event.client_payload.ENV_VARS.WELCOME_MESSAGE }}'" \
             -var="enable_payments=${{ github.event.client_payload.ENV_VARS.ENABLE_PAYMENTS }}" \
             -var="enable_vip=${{ github.event.client_payload.ENV_VARS.ENABLE_VIP_SCORING }}"
