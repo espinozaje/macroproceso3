@@ -18,17 +18,29 @@ variable "industry" { type = string }   # <--- NUEVO
 variable "n8n_chat_url" { 
   type = string 
   default = "https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/bot-chat" 
-  } 
+} 
 
 provider "aws" {
   region = "us-east-1"
 }
 
-# 1. Seguridad
+# 1. Seguridad (CORREGIDO)
 resource "aws_security_group" "web_sg" {
-  name        = "bot-sg-${var.client_id}-${random_id.sg_suffix.hex}"
-  ingress { from_port = 80; to_port = 80; protocol = "tcp"; cidr_blocks = ["0.0.0.0/0"] }
-  egress { from_port = 0; to_port = 0; protocol = "-1"; cidr_blocks = ["0.0.0.0/0"] }
+  name = "bot-sg-${var.client_id}-${random_id.sg_suffix.hex}"
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 resource "random_id" "sg_suffix" { byte_length = 4 }
@@ -41,8 +53,8 @@ data "aws_ami" "ubuntu" {
 
 # 2. Servidor
 resource "aws_instance" "cliente_bot" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t2.micro"
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "Sistema-${var.client_id}" }
 
@@ -104,7 +116,7 @@ resource "aws_instance" "cliente_bot" {
             // CONTEXTO PARA EL CEREBRO N8N
             const CONTEXT = {
                 client_id: "${var.client_id}",
-                industry: "${var.industry}",  // <-- NUEVO: La industria
+                industry: "${var.industry}", 
                 payments_enabled: "${var.enable_payments}",
                 vip_enabled: "${var.enable_vip}"
             };
@@ -119,7 +131,7 @@ resource "aws_instance" "cliente_bot" {
                     div.appendChild(bubble);
                 } else {
                     const icon = document.createElement('img');
-                    icon.src = "${var.logo_url}"; // Logo real
+                    icon.src = "${var.logo_url}";
                     icon.className = 'w-8 h-8 rounded-full object-cover';
                     div.appendChild(icon);
                     div.appendChild(bubble);
