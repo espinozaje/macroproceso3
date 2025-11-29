@@ -7,26 +7,26 @@ terraform {
   }
 }
 
-# --- VARIABLES DINÁMICAS (Vienen de n8n) ---
-variable "client_id" { type = string }
-variable "instance_size" { type = string }
-variable "welcome_msg" { type = string }
+# --- 1. VARIABLES QUE RECIBIMOS DE GITHUB ACTIONS (Vienen de tu n8n) ---
+variable "client_id" { type = string }       # ej: clinica-dental-123
+variable "industry" { type = string }        # ej: Dental
+variable "welcome_msg" { type = string }     # ej: "Bienvenido doctor..."
+variable "logo_url" { type = string }        # URL de Supabase
 variable "enable_payments" { type = string } # "true" o "false"
-variable "enable_vip" { type = string }      # "true" o "false"
-variable "logo_url" { type = string }
-variable "industry" { type = string }        # Ej: "Dental", "Ecommerce", "Consultora"
+variable "enable_vip" { type = string }      # "true" o "false" (Mapear desde ENABLE_VIP_SCORING)
 variable "n8n_chat_url" { 
   type = string 
-  default = "https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/bot-chat" 
-} 
+  # Pon aquí tu Webhook de n8n para el chat (No el de despliegue)
+  default = "https://TU-URL-N8N.trycloudflare.com/webhook/chat-bot" 
+}
 
 provider "aws" {
   region = "us-east-1"
 }
 
-# 1. Seguridad (Puertos abiertos para web)
+# --- 2. SEGURIDAD (Abrimos puerto 80 para ver la web) ---
 resource "aws_security_group" "web_sg" {
-  name = "bot-sg-${var.client_id}-${random_id.sg_suffix.hex}"
+  name = "sg-${var.client_id}-${random_id.suffix.hex}"
 
   ingress {
     from_port   = 80
@@ -34,14 +34,12 @@ resource "aws_security_group" "web_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
   ingress {
-    from_port   = 443
-    to_port     = 443
+    from_port   = 22
+    to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -50,278 +48,217 @@ resource "aws_security_group" "web_sg" {
   }
 }
 
-resource "random_id" "sg_suffix" { byte_length = 4 }
+resource "random_id" "suffix" { byte_length = 4 }
 
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical
+  owners      = ["099720109477"] 
   filter {
     name   = "name"
     values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
   }
 }
 
-# 2. Servidor con Despliegue de UI Profesional
-resource "aws_instance" "cliente_bot" {
+# --- 3. EL SERVIDOR (LA FÁBRICA DEL SISTEMA) ---
+resource "aws_instance" "app_server" {
   ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro" # Podría ser var.instance_size si tienes mapeo
+  instance_type          = "t2.micro" 
   vpc_security_group_ids = [aws_security_group.web_sg.id]
-  tags = { Name = "Sistema-${var.client_id}" }
+  tags = { Name = "SaaS-${var.client_id}" }
 
+  # --- AQUÍ OCURRE LA MAGIA DEL DESPLIEGUE ---
   user_data = <<-EOF
     #!/bin/bash
     
-    # 1. Preparación del entorno
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update && apt-get install -y nginx jq
+    # Instalar servidor web
+    apt-get update && apt-get install -y nginx
 
-    # 2. Captura de variables de Terraform a Bash para evitar errores de sintaxis
-    CLIENT_NAME="${var.client_id}"
+    # Variables de Terraform pasadas a Bash
+    CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
-    LOGO_URL="${var.logo_url}"
-    WELCOME_MSG="${var.welcome_msg}"
-    ENABLE_PAYMENTS="${var.enable_payments}"
-    ENABLE_VIP="${var.enable_vip}"
-    N8N_URL="${var.n8n_chat_url}"
+    LOGO="${var.logo_url}"
+    MSG="${var.welcome_msg}"
+    PAYMENTS="${var.enable_payments}" # true/false
+    VIP="${var.enable_vip}"           # true/false
+    CHAT_URL="${var.n8n_chat_url}"
 
-    # 3. Construcción del HTML Profesional
+    # Crear el HTML del Dashboard Profesional
     cat <<HTML > /var/www/html/index.html
     <!DOCTYPE html>
     <html lang="es">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>$CLIENT_NAME | Sistema Inteligente</title>
+        <title>Panel de Control | \$CLIENT</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-        
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Inter', sans-serif; }
-            /* Scrollbar personalizada */
-            ::-webkit-scrollbar { width: 6px; }
-            ::-webkit-scrollbar-track { background: #f1f1f1; }
-            ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-            ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-            
-            .msg-bubble { animation: fadeIn 0.3s ease-in-out; }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+            .message-appear { animation: slideUp 0.3s ease-out; }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         </style>
     </head>
-    <body class="bg-gray-100 h-screen flex overflow-hidden">
+    <body class="bg-slate-100 h-screen flex overflow-hidden">
 
-        <aside class="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shadow-xl">
-            <div class="p-6 border-b border-slate-700 flex items-center gap-3">
-                <div class="relative">
-                    <img src="$LOGO_URL" onerror="this.src='https://ui-avatars.com/api/?name=$CLIENT_NAME&background=random'" class="w-10 h-10 rounded-lg bg-white object-contain p-1">
-                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-slate-900"></div>
-                </div>
+        <aside class="w-64 bg-slate-900 text-white flex flex-col shadow-2xl z-20">
+            <div class="h-20 flex items-center gap-3 px-6 border-b border-slate-800">
+                <img src="\$LOGO" 
+                     onerror="this.src='https://ui-avatars.com/api/?name=\$CLIENT&background=3b82f6&color=fff&bold=true'" 
+                     class="w-10 h-10 rounded-lg bg-white object-contain p-1">
                 <div>
-                    <h2 class="font-bold text-sm truncate w-32 capitalize">$CLIENT_NAME</h2>
-                    <p class="text-xs text-slate-400 capitalize">$INDUSTRY</p>
+                    <h1 class="font-bold text-sm tracking-wide capitalize truncate w-32">\$CLIENT</h1>
+                    <span class="text-[10px] text-slate-400 uppercase tracking-wider">\$INDUSTRY</span>
                 </div>
             </div>
 
-            <nav class="flex-1 p-4 space-y-2">
-                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Principal</p>
-                
-                <a href="#" class="flex items-center gap-3 p-3 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-900/50 transition-all">
+            <nav class="flex-1 px-4 py-6 space-y-2">
+                <a href="#" class="flex items-center gap-3 px-4 py-3 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-900/50 transition-transform hover:scale-[1.02]">
                     <i class="fa-solid fa-robot w-5"></i>
-                    <span class="text-sm font-medium">Asistente IA</span>
+                    <span class="font-medium text-sm">Asistente IA</span>
+                </a>
+                
+                <a href="#" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors">
+                    <i class="fa-solid fa-chart-pie w-5"></i>
+                    <span class="font-medium text-sm">Estadísticas</span>
                 </a>
 
-                <a href="#" class="flex items-center gap-3 p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
-                    <i class="fa-solid fa-chart-line w-5"></i>
-                    <span class="text-sm font-medium">Dashboard</span>
-                </a>
-
-                <div id="module-payments" class="hidden">
-                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-6 mb-2">Finanzas</p>
-                    <a href="#" class="flex items-center gap-3 p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
-                        <i class="fa-solid fa-credit-card w-5"></i>
-                        <span class="text-sm font-medium">Transacciones</span>
+                <div id="menu-payments" class="hidden">
+                    <p class="mt-6 mb-2 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Finanzas</p>
+                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors">
+                        <i class="fa-solid fa-wallet w-5"></i>
+                        <span class="font-medium text-sm">Transacciones</span>
                     </a>
-                </div>
-
-                <div id="module-vip" class="hidden mt-4">
-                     <div class="bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl shadow-lg">
-                        <div class="flex items-center gap-2 text-white mb-1">
-                            <i class="fa-solid fa-crown text-yellow-300"></i>
-                            <span class="text-xs font-bold uppercase">Cliente VIP</span>
-                        </div>
-                        <p class="text-[10px] text-purple-100">Soporte prioritario activo y análisis predictivo habilitado.</p>
-                     </div>
                 </div>
             </nav>
 
+            <div id="badge-vip" class="hidden p-4">
+                <div class="bg-gradient-to-r from-amber-200 to-yellow-500 rounded-xl p-4 text-slate-900 shadow-lg">
+                    <div class="flex items-center gap-2 mb-1">
+                        <i class="fa-solid fa-crown text-slate-900"></i>
+                        <span class="font-bold text-xs uppercase">Cuenta VIP</span>
+                    </div>
+                    <p class="text-[10px] font-medium opacity-80 leading-tight">Soporte prioritario y servidores dedicados activos.</p>
+                </div>
+            </div>
+
             <div class="p-4 border-t border-slate-800">
                 <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
-                    <div class="flex-1">
-                        <div class="text-xs font-medium">Admin</div>
-                        <div class="text-[10px] text-green-400">● Sistema Online</div>
+                    <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs">AD</div>
+                    <div class="flex-col flex">
+                        <span class="text-xs font-semibold">Admin User</span>
+                        <span class="text-[10px] text-green-500">● Sistema Online</span>
                     </div>
                 </div>
             </div>
         </aside>
 
         <main class="flex-1 flex flex-col relative">
-            
-            <header class="bg-white h-16 border-b border-gray-200 flex items-center justify-between px-6 shadow-sm z-10">
-                <div class="flex items-center gap-2 md:hidden">
-                    <img src="$LOGO_URL" onerror="this.src='https://ui-avatars.com/api/?name=$CLIENT_NAME'" class="w-8 h-8 rounded">
-                    <span class="font-bold text-gray-700">$CLIENT_NAME</span>
-                </div>
-                <div class="hidden md:block">
-                    <h1 class="text-lg font-semibold text-gray-800">Centro de Control <span id="industry-label" class="text-gray-400 text-sm font-normal ml-2"></span></h1>
-                </div>
-                
-                <div class="flex items-center gap-4">
-                    <button class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition">
+            <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8">
+                <h2 class="text-xl font-bold text-slate-800">Centro de Comando</h2>
+                <div class="flex gap-4">
+                    <button class="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100">
                         <i class="fa-regular fa-bell"></i>
                     </button>
-                    <div class="h-8 w-[1px] bg-gray-300"></div>
-                    <span class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border border-gray-200">v2.4.0 (Stable)</span>
                 </div>
             </header>
 
-            <div id="chat-container" class="flex-1 p-6 overflow-y-auto space-y-6 bg-slate-50">
-                <div class="flex items-start gap-4 max-w-3xl mx-auto">
-                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center border border-blue-200 flex-shrink-0">
-                         <i class="fa-solid fa-robot text-blue-600"></i>
+            <div id="chat-box" class="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50">
+                <div class="flex gap-4 max-w-3xl mx-auto">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0 border border-blue-200">
+                        <i class="fa-solid fa-robot"></i>
                     </div>
-                    <div class="bg-white p-6 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-gray-700 leading-relaxed">
-                        <h3 class="font-bold text-gray-900 mb-2">¡Hola! Sistema iniciado.</h3>
-                        <p>$WELCOME_MSG</p>
+                    <div class="bg-white p-6 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-slate-600 text-sm leading-relaxed">
+                        <p class="font-bold text-slate-900 mb-2 block">Sistema Iniciado</p>
+                        \$MSG
                     </div>
                 </div>
             </div>
 
-            <div class="p-4 bg-white border-t border-gray-200">
-                <div class="max-w-3xl mx-auto relative">
-                    <form id="chat-form" class="flex gap-4">
-                        <input type="text" id="user-input" 
-                            placeholder="Escribe tu consulta o comando para $CLIENT_NAME..." 
-                            class="flex-1 bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block w-full p-4 shadow-inner outline-none transition-all">
-                        <button type="submit" 
-                            class="bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm px-6 py-2 transition-all shadow-lg shadow-blue-200 flex items-center gap-2">
-                            <span>Enviar</span>
-                            <i class="fa-solid fa-paper-plane"></i>
-                        </button>
-                    </form>
-                    <p class="text-center text-[10px] text-gray-400 mt-2">Potenciado por IA & n8n Automation</p>
-                </div>
+            <div class="p-6 bg-white border-t border-slate-200">
+                <form id="chat-form" class="max-w-3xl mx-auto relative flex gap-4">
+                    <input type="text" id="user-input" placeholder="Escribe tu consulta o comando..." 
+                        class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-xl font-medium transition-colors shadow-lg shadow-blue-200">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
             </div>
         </main>
 
         <script>
-            // --- CONFIGURACIÓN DINÁMICA ---
-            const CONFIG = {
-                payments: "$ENABLE_PAYMENTS",
-                vip: "$ENABLE_VIP",
-                industry: "$INDUSTRY",
-                logo: "$LOGO_URL",
-                n8nUrl: "$N8N_URL",
-                client: "$CLIENT_NAME"
+            // --- LÓGICA DINÁMICA DE MÓDULOS ---
+            const config = {
+                payments: "\$PAYMENTS", // Viene de Terraform -> n8n
+                vip: "\$VIP",           // Viene de Terraform -> n8n
+                n8n: "\$CHAT_URL"
             };
 
-            // 1. Lógica de UI (Módulos)
-            document.addEventListener('DOMContentLoaded', () => {
-                // Activar módulo de pagos si corresponde
-                if (CONFIG.payments === 'true') {
-                    document.getElementById('module-payments').classList.remove('hidden');
-                }
-                
-                // Activar módulo VIP si corresponde
-                if (CONFIG.vip === 'true') {
-                    document.getElementById('module-vip').classList.remove('hidden');
-                }
-
-                // Icono según industria
-                const industryIcons = {
-                    'Dental': '<i class="fa-solid fa-tooth"></i> Clínica',
-                    'Tienda Online': '<i class="fa-solid fa-shop"></i> E-commerce',
-                    'Consultora': '<i class="fa-solid fa-briefcase"></i> Servicios',
-                    'default': '<i class="fa-solid fa-building"></i> Empresa'
-                };
-                
-                const iconHtml = industryIcons[CONFIG.industry] || industryIcons['default'];
-                document.getElementById('industry-label').innerHTML = iconHtml;
-            });
+            // 1. Activar Módulos si el cliente pagó
+            if (config.payments === 'true') {
+                document.getElementById('menu-payments').classList.remove('hidden');
+            }
+            if (config.vip === 'true') {
+                document.getElementById('badge-vip').classList.remove('hidden');
+            }
 
             // 2. Lógica del Chat
             const form = document.getElementById('chat-form');
             const input = document.getElementById('user-input');
-            const container = document.getElementById('chat-container');
+            const box = document.getElementById('chat-box');
 
-            function addMessage(text, isUser) {
+            function addMsg(text, isUser) {
                 const div = document.createElement('div');
-                div.className = \`flex items-start gap-4 max-w-3xl mx-auto msg-bubble \${isUser ? 'flex-row-reverse' : ''}\`;
+                div.className = \`flex gap-4 max-w-3xl mx-auto message-appear \${isUser ? 'flex-row-reverse' : ''}\`;
                 
-                // Avatar
-                let avatarHtml = '';
-                if (isUser) {
-                    avatarHtml = \`<div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 flex-shrink-0"><i class="fa-solid fa-user"></i></div>\`;
-                } else {
-                    avatarHtml = \`<div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 border border-blue-200 flex-shrink-0"><i class="fa-solid fa-robot"></i></div>\`;
-                }
+                const avatar = isUser 
+                    ? '<div class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0"><i class="fa-solid fa-user"></i></div>'
+                    : '<div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0 border border-blue-200"><i class="fa-solid fa-robot"></i></div>';
 
-                // Burbuja
-                const bubbleClass = isUser 
-                    ? 'bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-100' 
-                    : 'bg-white text-gray-700 border border-gray-100 rounded-tl-none shadow-sm';
+                const bubble = isUser
+                    ? 'bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-100'
+                    : 'bg-white text-slate-600 border border-slate-100 rounded-tl-none shadow-sm';
 
                 div.innerHTML = \`
-                    \${avatarHtml}
-                    <div class="\${bubbleClass} p-4 rounded-2xl text-sm leading-relaxed max-w-[80%]">
+                    \${avatar}
+                    <div class="\${bubble} p-5 rounded-2xl text-sm leading-relaxed max-w-[80%]">
                         \${text}
                     </div>
                 \`;
-                
-                container.appendChild(div);
-                container.scrollTop = container.scrollHeight;
+                box.appendChild(div);
+                box.scrollTop = box.scrollHeight;
             }
 
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const msg = input.value.trim();
-                if (!msg) return;
+                const text = input.value.trim();
+                if(!text) return;
 
-                addMessage(msg, true);
+                addMsg(text, true);
                 input.value = '';
 
-                // Loader simulado pero elegante
-                const loadingId = 'loading-' + Date.now();
-                const loadingDiv = document.createElement('div');
-                loadingDiv.id = loadingId;
-                loadingDiv.className = "flex items-start gap-4 max-w-3xl mx-auto mt-4";
-                loadingDiv.innerHTML = \`
-                    <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center border border-blue-100"><i class="fa-solid fa-circle-notch fa-spin text-blue-400"></i></div>
-                    <div class="text-xs text-gray-400 py-3">Procesando en n8n...</div>
-                \`;
-                container.appendChild(loadingDiv);
-                container.scrollTop = container.scrollHeight;
+                // Loader
+                const loadId = 'load-' + Date.now();
+                const loader = document.createElement('div');
+                loader.id = loadId;
+                loader.className = 'flex gap-4 max-w-3xl mx-auto mt-4';
+                loader.innerHTML = '<div class="w-10 h-10"></div><div class="text-xs text-slate-400 italic">Procesando...</div>';
+                box.appendChild(loader);
 
                 try {
-                    const response = await fetch(CONFIG.n8nUrl, {
+                    // Aquí conectas con tu cerebro de n8n
+                    const res = await fetch(config.n8n, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            message: msg, 
-                            client: CONFIG.client,
-                            industry: CONFIG.industry,
-                            vip: CONFIG.vip
-                        })
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ message: text })
                     });
-                    const data = await response.json();
-                    document.getElementById(loadingId).remove();
-                    addMessage(data.output || data.text || "Respuesta recibida.", false);
-                } catch (err) {
-                    console.error(err);
-                    document.getElementById(loadingId).remove();
-                    addMessage("⚠️ Error de conexión con el servidor central.", false);
+                    const data = await res.json();
+                    document.getElementById(loadId).remove();
+                    addMsg(data.output || "Comando recibido.", false);
+                } catch(err) {
+                    document.getElementById(loadId).remove();
+                    addMsg("Error de conexión con el núcleo.", false);
                 }
             });
         </script>
@@ -329,9 +266,8 @@ resource "aws_instance" "cliente_bot" {
     </html>
 HTML
 
-    # Reiniciar Nginx para servir el nuevo sitio
     systemctl restart nginx
   EOF
 }
 
-output "server_ip" { value = aws_instance.cliente_bot.public_ip }
+output "ip_sistema" { value = aws_instance.app_server.public_ip }
