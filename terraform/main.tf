@@ -7,7 +7,7 @@ terraform {
   }
 }
 
-# --- 1. VARIABLES (Coinciden con GitHub Actions/n8n) ---
+# --- 1. VARIABLES ---
 variable "instance_size" { type = string } 
 variable "client_id" { type = string }
 variable "industry" { type = string }
@@ -27,7 +27,6 @@ provider "aws" {
 
 # --- 2. SEGURIDAD ---
 resource "aws_security_group" "web_sg" {
-  # CORRECCIÓN AQUÍ: Cambiamos 'sg-' por 'secgroup-' para evitar el error de AWS
   name = "secgroup-${var.client_id}-${random_id.suffix.hex}"
 
   ingress {
@@ -65,7 +64,7 @@ data "aws_ami" "ubuntu" {
 resource "aws_instance" "app_server" {
   ami = data.aws_ami.ubuntu.id
   
-  # Lógica real de tamaño de servidor
+  # Si es VIP, servidor más grande
   instance_type = var.instance_size == "s-2vcpu-2gb" ? "t3.small" : "t2.micro"
   
   vpc_security_group_ids = [aws_security_group.web_sg.id]
@@ -255,4 +254,5 @@ HTML
   EOF
 }
 
-output "ip_sistema" { value = aws_instance.app_server.public_ip }
+# --- CORRECCIÓN FINAL: NOMBRE DE SALIDA ---
+output "server_ip" { value = aws_instance.app_server.public_ip }
