@@ -4,9 +4,9 @@ variable "client_id" {
 }
 
 variable "instance_size" {
-  description = "Tamaño del servidor (t3.micro o s-1vcpu-1gb)"
+  description = "Tamaño del servidor (t2.micro para gratis, t3.medium para VIP)"
   type        = string
-  default     = "s-1vcpu-1gb"
+  default     = "t2.micro"
 }
 
 variable "welcome_msg" {
