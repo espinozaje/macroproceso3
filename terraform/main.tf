@@ -7,24 +7,29 @@ terraform {
   }
 }
 
-# --- 1. VARIABLES QUE RECIBIMOS DE GITHUB ACTIONS (Vienen de tu n8n) ---
-variable "client_id" { type = string }       # ej: clinica-dental-123
-variable "industry" { type = string }        # ej: Dental
-variable "welcome_msg" { type = string }     # ej: "Bienvenido doctor..."
-variable "logo_url" { type = string }        # URL de Supabase
-variable "enable_payments" { type = string } # "true" o "false"
-variable "enable_vip" { type = string }      # "true" o "false" (Mapear desde ENABLE_VIP_SCORING)
+# --- 1. VARIABLES (Declaración obligatoria) ---
+# Si GitHub Actions envía un valor, esta línea DEBE existir para recibirlo:
+variable "instance_size" { type = string } 
+
+# El resto de tus variables:
+variable "client_id" { type = string }
+variable "industry" { type = string }
+variable "welcome_msg" { type = string }
+variable "logo_url" { type = string }
+variable "enable_payments" { type = string }
+variable "enable_vip" { type = string }
+
 variable "n8n_chat_url" { 
   type = string 
-  # Pon aquí tu Webhook de n8n para el chat (No el de despliegue)
-  default = "https://TU-URL-N8N.trycloudflare.com/webhook/chat-bot" 
+  # Recuerda cambiar esto por tu webhook real de n8n
+  default = "https://tucorreo.trycloudflare.com/webhook/bot-chat" 
 }
 
 provider "aws" {
   region = "us-east-1"
 }
 
-# --- 2. SEGURIDAD (Abrimos puerto 80 para ver la web) ---
+# --- 2. SEGURIDAD ---
 resource "aws_security_group" "web_sg" {
   name = "sg-${var.client_id}-${random_id.suffix.hex}"
 
@@ -59,22 +64,23 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# --- 3. EL SERVIDOR (LA FÁBRICA DEL SISTEMA) ---
-# 3. EL SERVIDOR (LA FÁBRICA DEL SISTEMA)
+# --- 3. SERVIDOR (Usa la variable instance_size) ---
 resource "aws_instance" "app_server" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro" 
+  ami = data.aws_ami.ubuntu.id
+  
+  # LÓGICA: Si n8n dice que es VIP (servidor grande), usamos t3.small
+  instance_type = var.instance_size == "s-2vcpu-2gb" ? "t3.small" : "t2.micro"
+  
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- CORRECCIÓN APLICADA: Variables JS escapadas con $$ ---
   user_data = <<-EOF
     #!/bin/bash
     
-    # Instalar servidor web
+    # Instalar Nginx
     apt-get update && apt-get install -y nginx
 
-    # 1. Terraform inyecta valores aquí (Un solo $):
+    # Variables de Terraform -> Bash
     CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
     LOGO="${var.logo_url}"
@@ -83,7 +89,7 @@ resource "aws_instance" "app_server" {
     VIP="${var.enable_vip}"           
     CHAT_URL="${var.n8n_chat_url}"
 
-    # 2. Generamos el HTML (Usamos variables de Bash $CLIENT, etc)
+    # Generar HTML
     cat <<HTML > /var/www/html/index.html
     <!DOCTYPE html>
     <html lang="es">
@@ -96,7 +102,6 @@ resource "aws_instance" "app_server" {
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Inter', sans-serif; }
-            .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
             .message-appear { animation: slideUp 0.3s ease-out; }
             @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         </style>
@@ -115,16 +120,11 @@ resource "aws_instance" "app_server" {
             </div>
 
             <nav class="flex-1 px-4 py-6 space-y-2">
-                <a href="#" class="flex items-center gap-3 px-4 py-3 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-900/50 transition-transform hover:scale-[1.02]">
+                <a href="#" class="flex items-center gap-3 px-4 py-3 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-900/50 hover:scale-[1.02] transition">
                     <i class="fa-solid fa-robot w-5"></i>
                     <span class="font-medium text-sm">Asistente IA</span>
                 </a>
                 
-                <a href="#" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors">
-                    <i class="fa-solid fa-chart-pie w-5"></i>
-                    <span class="font-medium text-sm">Estadísticas</span>
-                </a>
-
                 <div id="menu-payments" class="hidden">
                     <p class="mt-6 mb-2 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Finanzas</p>
                     <a href="#" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors">
@@ -138,18 +138,18 @@ resource "aws_instance" "app_server" {
                 <div class="bg-gradient-to-r from-amber-200 to-yellow-500 rounded-xl p-4 text-slate-900 shadow-lg">
                     <div class="flex items-center gap-2 mb-1">
                         <i class="fa-solid fa-crown text-slate-900"></i>
-                        <span class="font-bold text-xs uppercase">Cuenta VIP</span>
+                        <span class="font-bold text-xs uppercase">VIP Activo</span>
                     </div>
-                    <p class="text-[10px] font-medium opacity-80 leading-tight">Soporte prioritario activo.</p>
+                    <p class="text-[10px] font-medium opacity-80">Hardware dedicado.</p>
                 </div>
             </div>
 
             <div class="p-4 border-t border-slate-800">
                 <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs">AD</div>
+                    <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs">A</div>
                     <div class="flex-col flex">
-                        <span class="text-xs font-semibold">Admin User</span>
-                        <span class="text-[10px] text-green-500">● Sistema Online</span>
+                        <span class="text-xs font-semibold">Admin</span>
+                        <span class="text-[10px] text-green-500">● Online</span>
                     </div>
                 </div>
             </div>
@@ -157,21 +157,16 @@ resource "aws_instance" "app_server" {
 
         <main class="flex-1 flex flex-col relative">
             <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8">
-                <h2 class="text-xl font-bold text-slate-800">Centro de Comando</h2>
-                <div class="flex gap-4">
-                    <button class="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100">
-                        <i class="fa-regular fa-bell"></i>
-                    </button>
-                </div>
+                <h2 class="text-xl font-bold text-slate-800">Dashboard</h2>
             </header>
 
             <div id="chat-box" class="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50">
                 <div class="flex gap-4 max-w-3xl mx-auto">
-                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0 border border-blue-200">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
                         <i class="fa-solid fa-robot"></i>
                     </div>
-                    <div class="bg-white p-6 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-slate-600 text-sm leading-relaxed">
-                        <p class="font-bold text-slate-900 mb-2 block">Sistema Iniciado</p>
+                    <div class="bg-white p-6 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-slate-600 text-sm">
+                        <p class="font-bold text-slate-900 mb-2">Sistema Iniciado</p>
                         $MSG
                     </div>
                 </div>
@@ -179,9 +174,9 @@ resource "aws_instance" "app_server" {
 
             <div class="p-6 bg-white border-t border-slate-200">
                 <form id="chat-form" class="max-w-3xl mx-auto relative flex gap-4">
-                    <input type="text" id="user-input" placeholder="Escribe tu consulta o comando..." 
-                        class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner">
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-xl font-medium transition-colors shadow-lg shadow-blue-200">
+                    <input type="text" id="user-input" placeholder="Escribe..." 
+                        class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-xl font-medium shadow-lg shadow-blue-200">
                         <i class="fa-solid fa-paper-plane"></i>
                     </button>
                 </form>
@@ -189,19 +184,15 @@ resource "aws_instance" "app_server" {
         </main>
 
         <script>
-            // CONFIGURACIÓN DINÁMICA
+            // LÓGICA JS (Cliente)
             const config = {
                 payments: "$PAYMENTS",
                 vip: "$VIP",
                 n8n: "$CHAT_URL"
             };
 
-            if (config.payments === 'true') {
-                document.getElementById('menu-payments').classList.remove('hidden');
-            }
-            if (config.vip === 'true') {
-                document.getElementById('badge-vip').classList.remove('hidden');
-            }
+            if (config.payments === 'true') document.getElementById('menu-payments').classList.remove('hidden');
+            if (config.vip === 'true') document.getElementById('badge-vip').classList.remove('hidden');
 
             const form = document.getElementById('chat-form');
             const input = document.getElementById('user-input');
@@ -209,13 +200,12 @@ resource "aws_instance" "app_server" {
 
             function addMsg(text, isUser) {
                 const div = document.createElement('div');
-                // NOTA: Aquí usamos doble $$ para que Terraform NO intente interpretarlo
-                // y se escriba como un template literal de JS en el archivo final.
+                // IMPORTANTE: $$ es para que Terraform ignore estas variables y se usen en JS
                 div.className = `flex gap-4 max-w-3xl mx-auto message-appear $${isUser ? 'flex-row-reverse' : ''}`;
                 
                 const avatar = isUser 
                     ? '<div class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0"><i class="fa-solid fa-user"></i></div>'
-                    : '<div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0 border border-blue-200"><i class="fa-solid fa-robot"></i></div>';
+                    : '<div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0"><i class="fa-solid fa-robot"></i></div>';
 
                 const bubble = isUser
                     ? 'bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-100'
@@ -239,11 +229,12 @@ resource "aws_instance" "app_server" {
                 addMsg(text, true);
                 input.value = '';
 
+                // Loader
                 const loadId = 'load-' + Date.now();
                 const loader = document.createElement('div');
                 loader.id = loadId;
                 loader.className = 'flex gap-4 max-w-3xl mx-auto mt-4';
-                loader.innerHTML = '<div class="w-10 h-10"></div><div class="text-xs text-slate-400 italic">Procesando...</div>';
+                loader.innerHTML = '<div class="text-xs text-slate-400 italic ml-14">Escribiendo...</div>';
                 box.appendChild(loader);
 
                 try {
@@ -254,10 +245,10 @@ resource "aws_instance" "app_server" {
                     });
                     const data = await res.json();
                     document.getElementById(loadId).remove();
-                    addMsg(data.output || "Comando recibido.", false);
+                    addMsg(data.output || "Recibido.", false);
                 } catch(err) {
                     document.getElementById(loadId).remove();
-                    addMsg("Error de conexión con el núcleo.", false);
+                    addMsg("Error de red.", false);
                 }
             });
         </script>
