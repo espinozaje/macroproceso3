@@ -35,3 +35,21 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Obtener IP del Output
+        id: get_ip
+        working-directory: ./terraform
+        run: |
+          # Extraemos la IP limpia del output de Terraform
+          SERVER_IP=$(terraform output -raw server_ip)
+          echo "SERVER_IP=$SERVER_IP" >> $GITHUB_ENV
+
+      - name: 🔔 Notificar a n8n (Email)
+        run: |
+          curl -X POST https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/send-credentials \
+          -H "Content-Type: application/json" \
+          -d '{
+            "email": "${{ github.event.client_payload.env_vars.CLIENT_EMAIL }}",
+            "server_ip": "${{ env.SERVER_IP }}",
+            "client_name": "${{ github.event.client_payload.client_id }}"
+          }'
