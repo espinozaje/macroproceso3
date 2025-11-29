@@ -61,29 +61,29 @@ data "aws_ami" "ubuntu" {
 }
 
 # --- 3. SERVIDOR ---
+# --- 3. SERVIDOR (Versión Final - Forzando Dashboard) ---
 resource "aws_instance" "app_server" {
   ami = data.aws_ami.ubuntu.id
   instance_type = var.instance_size == "s-2vcpu-2gb" ? "t3.small" : "t2.micro"
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- SCRIPT DE INICIO (User Data) ---
   user_data = <<-EOF
     #!/bin/bash
     
-    # 1. Espera de seguridad para red
+    # 1. Espera de seguridad
     sleep 30
     
-    # 2. Instalación desatendida
+    # 2. Instalación
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y nginx jq
     
-    # 3. Asegurar arranque de Nginx
-    systemctl enable nginx
-    systemctl start nginx
-
-    # Variables de Terraform (Un solo $ para que Terraform las reemplace)
+    # 3. --- LIMPIEZA AGRESIVA ---
+    # Borramos cualquier rastro de la página por defecto de Nginx
+    rm -rf /var/www/html/*
+    
+    # Variables de Terraform
     CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
     LOGO="${var.logo_url}"
@@ -92,8 +92,7 @@ resource "aws_instance" "app_server" {
     VIP="${var.enable_vip}"           
     CHAT_URL="${var.n8n_chat_url}"
 
-    # Generar HTML
-    # NOTA: Usamos doble $$ dentro del HTML para variables de JS, y $ simple para variables de Bash.
+    # 4. Crear el Dashboard
     cat <<HTML > /var/www/html/index.html
     <!DOCTYPE html>
     <html lang="es">
@@ -107,7 +106,7 @@ resource "aws_instance" "app_server" {
         <style>body{font-family:'Inter',sans-serif}</style>
     </head>
     <body class="bg-slate-100 h-screen flex overflow-hidden">
-        <aside class="w-64 bg-slate-900 text-white flex flex-col z-20">
+        <aside class="w-64 bg-slate-900 text-white flex flex-col z-20 shadow-xl">
             <div class="h-20 flex items-center gap-3 px-6 border-b border-slate-800">
                 <img src="$LOGO" onerror="this.src='https://ui-avatars.com/api/?name=$CLIENT&background=random'" class="w-10 h-10 rounded bg-white p-1">
                 <div>
@@ -116,29 +115,35 @@ resource "aws_instance" "app_server" {
                 </div>
             </div>
             <nav class="flex-1 px-4 py-6 space-y-2">
-                <a href="#" class="flex items-center gap-3 px-4 py-3 bg-blue-600 rounded text-white"><i class="fa-solid fa-robot"></i> Asistente</a>
-                <div id="mod-pay" class="hidden"><a href="#" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white"><i class="fa-solid fa-wallet"></i> Finanzas</a></div>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 bg-blue-600 rounded text-white shadow hover:bg-blue-500 transition"><i class="fa-solid fa-robot"></i> Asistente IA</a>
+                <div id="mod-pay" class="hidden"><a href="#" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white transition"><i class="fa-solid fa-wallet"></i> Finanzas</a></div>
             </nav>
-            <div id="mod-vip" class="hidden p-4"><div class="bg-yellow-500 text-black p-2 rounded text-xs font-bold text-center">★ VIP MEMBER</div></div>
+            <div id="mod-vip" class="hidden p-4"><div class="bg-gradient-to-r from-yellow-400 to-yellow-600 text-black p-3 rounded-lg text-xs font-bold text-center shadow-lg">👑 VIP MEMBER</div></div>
         </aside>
 
         <main class="flex-1 flex flex-col bg-slate-50 relative">
+            <header class="h-16 bg-white border-b flex items-center px-8 justify-between">
+                <h2 class="font-bold text-slate-700">Dashboard de Control</h2>
+                <div class="text-xs text-green-600 font-medium">● Sistema Operativo</div>
+            </header>
+
             <div id="chat-box" class="flex-1 p-8 overflow-y-auto space-y-4">
                 <div class="flex gap-4">
-                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div>
-                    <div class="bg-white p-4 rounded-xl shadow-sm text-sm">$MSG</div>
+                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$MSG</div>
                 </div>
             </div>
-            <div class="p-4 bg-white border-t">
-                <form id="chat-form" class="flex gap-2">
-                    <input id="in" type="text" class="flex-1 border p-2 rounded" placeholder="Escribe...">
-                    <button class="bg-blue-600 text-white px-4 rounded">Enviar</button>
+
+            <div class="p-6 bg-white border-t">
+                <form id="chat-form" class="flex gap-2 max-w-4xl mx-auto">
+                    <input id="in" type="text" class="flex-1 border border-slate-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Escribe tu comando...">
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-lg font-medium transition">Enviar</button>
                 </form>
             </div>
         </main>
 
         <script>
-            // LÓGICA JS (Usamos 'cfg' en lugar de 'config' para brevedad)
+            // LÓGICA DE CLIENTE
             const cfg = { p: "$PAYMENTS", v: "$VIP", url: "$CHAT_URL" };
             
             if(cfg.p === 'true') document.getElementById('mod-pay').classList.remove('hidden');
@@ -152,9 +157,10 @@ resource "aws_instance" "app_server" {
                 const txt = inp.value.trim();
                 if(!txt) return;
                 
-                // IMPORTANTE: Aquí están los backticks (`) limpios y las variables JS con doble $$
-                box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm">$${txt}</div></div>\`;
+                // Mensaje Usuario
+                box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">\${txt}</div></div>\`;
                 inp.value = '';
+                box.scrollTop = box.scrollHeight;
                 
                 try {
                     const res = await fetch(cfg.url, {
@@ -164,10 +170,9 @@ resource "aws_instance" "app_server" {
                     });
                     const d = await res.json();
                     
-                    // IMPORTANTE: $${d.output} con doble $ para que Terraform no lo toque
-                    const respuesta = d.output || "Recibido";
-                    box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm">$${respuesta}</div></div>\`;
-                    
+                    const respuesta = d.output || "Comando procesado.";
+                    // Mensaje Bot
+                    box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">\${respuesta}</div></div>\`;
                     box.scrollTop = box.scrollHeight;
                 } catch(e) { console.error(e); }
             });
@@ -175,6 +180,9 @@ resource "aws_instance" "app_server" {
     </body>
     </html>
     
+    # 5. Permisos y Reinicio final
+    chown -R www-data:www-data /var/www/html
+    chmod 755 /var/www/html
     systemctl restart nginx
   EOF
 }
