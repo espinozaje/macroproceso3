@@ -35,7 +35,6 @@ resource "aws_security_group" "web_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  # Abrimos SSH por si necesitas entrar a revisar
   ingress {
     from_port   = 22
     to_port     = 22
@@ -68,25 +67,23 @@ resource "aws_instance" "app_server" {
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- SCRIPT DE INICIO BLINDADO ---
+  # --- SCRIPT DE INICIO (User Data) ---
   user_data = <<-EOF
     #!/bin/bash
     
-    # 1. Esperar a que la red esté lista (vital)
+    # 1. Espera de seguridad para red
     sleep 30
     
-    # 2. Configurar modo desatendido (para que no pida confirmación)
+    # 2. Instalación desatendida
     export DEBIAN_FRONTEND=noninteractive
-    
-    # 3. Instalación robusta
     apt-get update
     apt-get install -y nginx jq
     
-    # 4. Asegurar que Nginx arranque
+    # 3. Asegurar arranque de Nginx
     systemctl enable nginx
     systemctl start nginx
 
-    # Variables de Terraform -> Bash
+    # Variables de Terraform (Un solo $ para que Terraform las reemplace)
     CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
     LOGO="${var.logo_url}"
@@ -95,7 +92,8 @@ resource "aws_instance" "app_server" {
     VIP="${var.enable_vip}"           
     CHAT_URL="${var.n8n_chat_url}"
 
-    # Generar HTML (Usando doble $$ para variables JS)
+    # Generar HTML
+    # NOTA: Usamos doble $$ dentro del HTML para variables de JS, y $ simple para variables de Bash.
     cat <<HTML > /var/www/html/index.html
     <!DOCTYPE html>
     <html lang="es">
@@ -140,20 +138,22 @@ resource "aws_instance" "app_server" {
         </main>
 
         <script>
-            // LÓGICA
+            // LÓGICA JS (Usamos 'cfg' en lugar de 'config' para brevedad)
             const cfg = { p: "$PAYMENTS", v: "$VIP", url: "$CHAT_URL" };
-            if(cfg.p==='true') document.getElementById('mod-pay').classList.remove('hidden');
-            if(cfg.v==='true') document.getElementById('mod-vip').classList.remove('hidden');
+            
+            if(cfg.p === 'true') document.getElementById('mod-pay').classList.remove('hidden');
+            if(cfg.v === 'true') document.getElementById('mod-vip').classList.remove('hidden');
 
             const box = document.getElementById('chat-box');
+            
             document.getElementById('chat-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const inp = document.getElementById('in');
                 const txt = inp.value.trim();
                 if(!txt) return;
                 
-                // Mensaje usuario
-                box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm">\${txt}</div></div>\`;
+                // IMPORTANTE: Aquí están los backticks (`) limpios y las variables JS con doble $$
+                box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm">$${txt}</div></div>\`;
                 inp.value = '';
                 
                 try {
@@ -163,15 +163,18 @@ resource "aws_instance" "app_server" {
                         body: JSON.stringify({message: txt})
                     });
                     const d = await res.json();
-                    // Respuesta Bot
-                    box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm">\${d.output || 'Recibido'}</div></div>\`;
+                    
+                    // IMPORTANTE: $${d.output} con doble $ para que Terraform no lo toque
+                    const respuesta = d.output || "Recibido";
+                    box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm">$${respuesta}</div></div>\`;
+                    
+                    box.scrollTop = box.scrollHeight;
                 } catch(e) { console.error(e); }
             });
         </script>
     </body>
     </html>
     
-    # Reiniciar Nginx al final para asegurar cambios
     systemctl restart nginx
   EOF
 }
