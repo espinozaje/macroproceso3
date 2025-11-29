@@ -7,11 +7,8 @@ terraform {
   }
 }
 
-# --- 1. VARIABLES (Declaración obligatoria) ---
-# Si GitHub Actions envía un valor, esta línea DEBE existir para recibirlo:
+# --- 1. VARIABLES (Coinciden con GitHub Actions/n8n) ---
 variable "instance_size" { type = string } 
-
-# El resto de tus variables:
 variable "client_id" { type = string }
 variable "industry" { type = string }
 variable "welcome_msg" { type = string }
@@ -21,7 +18,6 @@ variable "enable_vip" { type = string }
 
 variable "n8n_chat_url" { 
   type = string 
-  # Recuerda cambiar esto por tu webhook real de n8n
   default = "https://tucorreo.trycloudflare.com/webhook/bot-chat" 
 }
 
@@ -31,7 +27,8 @@ provider "aws" {
 
 # --- 2. SEGURIDAD ---
 resource "aws_security_group" "web_sg" {
-  name = "sg-${var.client_id}-${random_id.suffix.hex}"
+  # CORRECCIÓN AQUÍ: Cambiamos 'sg-' por 'secgroup-' para evitar el error de AWS
+  name = "secgroup-${var.client_id}-${random_id.suffix.hex}"
 
   ingress {
     from_port   = 80
@@ -64,11 +61,11 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# --- 3. SERVIDOR (Usa la variable instance_size) ---
+# --- 3. SERVIDOR ---
 resource "aws_instance" "app_server" {
   ami = data.aws_ami.ubuntu.id
   
-  # LÓGICA: Si n8n dice que es VIP (servidor grande), usamos t3.small
+  # Lógica real de tamaño de servidor
   instance_type = var.instance_size == "s-2vcpu-2gb" ? "t3.small" : "t2.micro"
   
   vpc_security_group_ids = [aws_security_group.web_sg.id]
@@ -200,7 +197,6 @@ resource "aws_instance" "app_server" {
 
             function addMsg(text, isUser) {
                 const div = document.createElement('div');
-                // IMPORTANTE: $$ es para que Terraform ignore estas variables y se usen en JS
                 div.className = `flex gap-4 max-w-3xl mx-auto message-appear $${isUser ? 'flex-row-reverse' : ''}`;
                 
                 const avatar = isUser 
