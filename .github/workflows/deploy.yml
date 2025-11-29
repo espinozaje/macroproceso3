@@ -1,0 +1,40 @@
+name: Despliegue Cliente
+on:
+  repository_dispatch:
+    types: [deploy_client_infra]
+
+env:
+  
+  DOCKER_IMAGE: "python:3.9-slim" 
+
+jobs:
+  deploy:
+    name: Crear Infraestructura
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v3
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
+
+      - name: Inicializar Terraform
+        working-directory: ./terraform
+        run: terraform init
+        env:
+          DIGITALOCEAN_TOKEN: ${{ secrets.DO_TOKEN }}
+
+      - name: Aplicar Infraestructura (Crear Servidor)
+        working-directory: ./terraform
+        run: |
+          terraform apply -auto-approve \
+            -var="do_token=${{ secrets.DO_TOKEN }}" \
+            -var="client_id=${{ github.event.client_payload.client_id }}" \
+            -var="instance_size=${{ github.event.client_payload.instance_size }}" \
+            -var="welcome_msg='${{ github.event.client_payload.env_vars.WELCOME_MESSAGE }}'" \
+            -var="enable_payments=${{ github.event.client_payload.env_vars.ENABLE_PAYMENTS }}" \
+            -var="enable_vip=${{ github.event.client_payload.env_vars.ENABLE_VIP_SCORING }}"
+        env:
+          DIGITALOCEAN_TOKEN: ${{ secrets.DO_TOKEN }}
