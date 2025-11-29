@@ -61,29 +61,31 @@ data "aws_ami" "ubuntu" {
 }
 
 # --- 3. SERVIDOR ---
-# --- 3. SERVIDOR (Versión Final - Forzando Dashboard) ---
 resource "aws_instance" "app_server" {
   ami = data.aws_ami.ubuntu.id
+  
+  # Selección de servidor (Normal vs VIP)
   instance_type = var.instance_size == "s-2vcpu-2gb" ? "t3.small" : "t2.micro"
+  
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
+  # --- SCRIPT DE CONFIGURACIÓN ---
   user_data = <<-EOF
     #!/bin/bash
     
     # 1. Espera de seguridad
     sleep 30
     
-    # 2. Instalación
+    # 2. Instalación de Nginx
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y nginx jq
     
-    # 3. --- LIMPIEZA AGRESIVA ---
-    # Borramos cualquier rastro de la página por defecto de Nginx
+    # 3. LIMPIEZA: Borramos la página por defecto de Nginx
     rm -rf /var/www/html/*
     
-    # Variables de Terraform
+    # Variables de Terraform (Un solo $ para que Terraform las reemplace)
     CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
     LOGO="${var.logo_url}"
@@ -157,8 +159,8 @@ resource "aws_instance" "app_server" {
                 const txt = inp.value.trim();
                 if(!txt) return;
                 
-                // Mensaje Usuario
-                box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">\${txt}</div></div>\`;
+                // AQUÍ ESTABA EL ERROR: Usamos doble $$ para escapar la variable de JS
+                box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">$${txt}</div></div>\`;
                 inp.value = '';
                 box.scrollTop = box.scrollHeight;
                 
@@ -171,8 +173,8 @@ resource "aws_instance" "app_server" {
                     const d = await res.json();
                     
                     const respuesta = d.output || "Comando procesado.";
-                    // Mensaje Bot
-                    box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">\${respuesta}</div></div>\`;
+                    // AQUÍ TAMBIÉN: Doble $$
+                    box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$${respuesta}</div></div>\`;
                     box.scrollTop = box.scrollHeight;
                 } catch(e) { console.error(e); }
             });
