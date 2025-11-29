@@ -60,36 +60,37 @@ data "aws_ami" "ubuntu" {
 }
 
 # --- 3. EL SERVIDOR (LA FÁBRICA DEL SISTEMA) ---
+# 3. EL SERVIDOR (LA FÁBRICA DEL SISTEMA)
 resource "aws_instance" "app_server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t2.micro" 
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- AQUÍ OCURRE LA MAGIA DEL DESPLIEGUE ---
+  # --- CORRECCIÓN APLICADA: Variables JS escapadas con $$ ---
   user_data = <<-EOF
     #!/bin/bash
     
     # Instalar servidor web
     apt-get update && apt-get install -y nginx
 
-    # Variables de Terraform pasadas a Bash
+    # 1. Terraform inyecta valores aquí (Un solo $):
     CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
     LOGO="${var.logo_url}"
     MSG="${var.welcome_msg}"
-    PAYMENTS="${var.enable_payments}" # true/false
-    VIP="${var.enable_vip}"           # true/false
+    PAYMENTS="${var.enable_payments}" 
+    VIP="${var.enable_vip}"           
     CHAT_URL="${var.n8n_chat_url}"
 
-    # Crear el HTML del Dashboard Profesional
+    # 2. Generamos el HTML (Usamos variables de Bash $CLIENT, etc)
     cat <<HTML > /var/www/html/index.html
     <!DOCTYPE html>
     <html lang="es">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panel de Control | \$CLIENT</title>
+        <title>Panel de Control | $CLIENT</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -104,12 +105,12 @@ resource "aws_instance" "app_server" {
 
         <aside class="w-64 bg-slate-900 text-white flex flex-col shadow-2xl z-20">
             <div class="h-20 flex items-center gap-3 px-6 border-b border-slate-800">
-                <img src="\$LOGO" 
-                     onerror="this.src='https://ui-avatars.com/api/?name=\$CLIENT&background=3b82f6&color=fff&bold=true'" 
+                <img src="$LOGO" 
+                     onerror="this.src='https://ui-avatars.com/api/?name=$CLIENT&background=3b82f6&color=fff&bold=true'" 
                      class="w-10 h-10 rounded-lg bg-white object-contain p-1">
                 <div>
-                    <h1 class="font-bold text-sm tracking-wide capitalize truncate w-32">\$CLIENT</h1>
-                    <span class="text-[10px] text-slate-400 uppercase tracking-wider">\$INDUSTRY</span>
+                    <h1 class="font-bold text-sm tracking-wide capitalize truncate w-32">$CLIENT</h1>
+                    <span class="text-[10px] text-slate-400 uppercase tracking-wider">$INDUSTRY</span>
                 </div>
             </div>
 
@@ -139,7 +140,7 @@ resource "aws_instance" "app_server" {
                         <i class="fa-solid fa-crown text-slate-900"></i>
                         <span class="font-bold text-xs uppercase">Cuenta VIP</span>
                     </div>
-                    <p class="text-[10px] font-medium opacity-80 leading-tight">Soporte prioritario y servidores dedicados activos.</p>
+                    <p class="text-[10px] font-medium opacity-80 leading-tight">Soporte prioritario activo.</p>
                 </div>
             </div>
 
@@ -171,7 +172,7 @@ resource "aws_instance" "app_server" {
                     </div>
                     <div class="bg-white p-6 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-slate-600 text-sm leading-relaxed">
                         <p class="font-bold text-slate-900 mb-2 block">Sistema Iniciado</p>
-                        \$MSG
+                        $MSG
                     </div>
                 </div>
             </div>
@@ -188,14 +189,13 @@ resource "aws_instance" "app_server" {
         </main>
 
         <script>
-            // --- LÓGICA DINÁMICA DE MÓDULOS ---
+            // CONFIGURACIÓN DINÁMICA
             const config = {
-                payments: "\$PAYMENTS", // Viene de Terraform -> n8n
-                vip: "\$VIP",           // Viene de Terraform -> n8n
-                n8n: "\$CHAT_URL"
+                payments: "$PAYMENTS",
+                vip: "$VIP",
+                n8n: "$CHAT_URL"
             };
 
-            // 1. Activar Módulos si el cliente pagó
             if (config.payments === 'true') {
                 document.getElementById('menu-payments').classList.remove('hidden');
             }
@@ -203,14 +203,15 @@ resource "aws_instance" "app_server" {
                 document.getElementById('badge-vip').classList.remove('hidden');
             }
 
-            // 2. Lógica del Chat
             const form = document.getElementById('chat-form');
             const input = document.getElementById('user-input');
             const box = document.getElementById('chat-box');
 
             function addMsg(text, isUser) {
                 const div = document.createElement('div');
-                div.className = \`flex gap-4 max-w-3xl mx-auto message-appear \${isUser ? 'flex-row-reverse' : ''}\`;
+                // NOTA: Aquí usamos doble $$ para que Terraform NO intente interpretarlo
+                // y se escriba como un template literal de JS en el archivo final.
+                div.className = `flex gap-4 max-w-3xl mx-auto message-appear $${isUser ? 'flex-row-reverse' : ''}`;
                 
                 const avatar = isUser 
                     ? '<div class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0"><i class="fa-solid fa-user"></i></div>'
@@ -220,12 +221,12 @@ resource "aws_instance" "app_server" {
                     ? 'bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-100'
                     : 'bg-white text-slate-600 border border-slate-100 rounded-tl-none shadow-sm';
 
-                div.innerHTML = \`
-                    \${avatar}
-                    <div class="\${bubble} p-5 rounded-2xl text-sm leading-relaxed max-w-[80%]">
-                        \${text}
+                div.innerHTML = `
+                    $${avatar}
+                    <div class="$${bubble} p-5 rounded-2xl text-sm leading-relaxed max-w-[80%]">
+                        $${text}
                     </div>
-                \`;
+                `;
                 box.appendChild(div);
                 box.scrollTop = box.scrollHeight;
             }
@@ -238,7 +239,6 @@ resource "aws_instance" "app_server" {
                 addMsg(text, true);
                 input.value = '';
 
-                // Loader
                 const loadId = 'load-' + Date.now();
                 const loader = document.createElement('div');
                 loader.id = loadId;
@@ -247,7 +247,6 @@ resource "aws_instance" "app_server" {
                 box.appendChild(loader);
 
                 try {
-                    // Aquí conectas con tu cerebro de n8n
                     const res = await fetch(config.n8n, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -265,7 +264,6 @@ resource "aws_instance" "app_server" {
     </body>
     </html>
 HTML
-
     systemctl restart nginx
   EOF
 }
