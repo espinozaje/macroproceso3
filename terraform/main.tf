@@ -13,8 +13,8 @@ variable "instance_size" { type = string }
 variable "welcome_msg" { type = string }
 variable "enable_payments" { type = string }
 variable "enable_vip" { type = string }
-variable "logo_url" { type = string }   # <--- NUEVO
-variable "industry" { type = string }   # <--- NUEVO
+variable "logo_url" { type = string }
+variable "industry" { type = string }
 variable "n8n_chat_url" { 
   type = string 
   default = "https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/bot-chat" 
@@ -24,7 +24,7 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1. Seguridad (CORREGIDO)
+# 1. Seguridad
 resource "aws_security_group" "web_sg" {
   name = "bot-sg-${var.client_id}-${random_id.sg_suffix.hex}"
 
@@ -45,10 +45,15 @@ resource "aws_security_group" "web_sg" {
 
 resource "random_id" "sg_suffix" { byte_length = 4 }
 
+# --- AQUÍ ESTABA EL ERROR, YA CORREGIDO ---
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"]
-  filter { name = "name"; values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"] }
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+  }
 }
 
 # 2. Servidor
@@ -113,7 +118,6 @@ resource "aws_instance" "cliente_bot" {
             const container = document.getElementById('chat-container');
             const N8N_URL = "${var.n8n_chat_url}";
             
-            // CONTEXTO PARA EL CEREBRO N8N
             const CONTEXT = {
                 client_id: "${var.client_id}",
                 industry: "${var.industry}", 
