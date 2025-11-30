@@ -63,29 +63,28 @@ data "aws_ami" "ubuntu" {
 # --- 3. SERVIDOR ---
 resource "aws_instance" "app_server" {
   ami = data.aws_ami.ubuntu.id
-  
-  # Selección de servidor (Normal vs VIP)
+  # Lógica de tamaño
   instance_type = var.instance_size == "s-2vcpu-2gb" ? "t3.small" : "t2.micro"
   
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- SCRIPT DE CONFIGURACIÓN ---
+  # --- SCRIPT DE INICIO ROBUSTO ---
   user_data = <<-EOF
     #!/bin/bash
     
-    # 1. Espera de seguridad
+    # 1. Espera inicial
     sleep 30
     
-    # 2. Instalación de Nginx
+    # 2. Instalación Nginx
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y nginx jq
     
-    # 3. LIMPIEZA
+    # 3. Limpieza
     rm -rf /var/www/html/*
     
-    # Variables Bash
+    # 4. Capturar variables de Terraform en Bash
     CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
     LOGO="${var.logo_url}"
@@ -94,14 +93,17 @@ resource "aws_instance" "app_server" {
     VIP="${var.enable_vip}"           
     CHAT_URL="${var.n8n_chat_url}"
 
-    # 4. Crear el Dashboard
-    cat <<HTML > /var/www/html/index.html
+    # 5. CREAR HTML USANDO "QUOTED HEREDOC" (<<'HTML')
+    # Las comillas simples en 'HTML' evitan que Bash intente ejecutar el JS.
+    # Usamos PLACEHOLDERS (__CLIENT__, __LOGO__) para reemplazar después.
+    
+    cat <<'HTML' > /var/www/html/index.html
     <!DOCTYPE html>
     <html lang="es">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panel | $CLIENT</title>
+        <title>Panel | __CLIENT__</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
@@ -110,10 +112,10 @@ resource "aws_instance" "app_server" {
     <body class="bg-slate-100 h-screen flex overflow-hidden">
         <aside class="w-64 bg-slate-900 text-white flex flex-col z-20 shadow-xl">
             <div class="h-20 flex items-center gap-3 px-6 border-b border-slate-800">
-                <img src="$LOGO" onerror="this.src='https://ui-avatars.com/api/?name=$CLIENT&background=random'" class="w-10 h-10 rounded bg-white p-1">
+                <img src="__LOGO__" onerror="this.src='https://ui-avatars.com/api/?name=__CLIENT__&background=random'" class="w-10 h-10 rounded bg-white p-1">
                 <div>
-                    <h1 class="font-bold text-sm capitalize truncate w-32">$CLIENT</h1>
-                    <span class="text-[10px] text-slate-400 uppercase">$INDUSTRY</span>
+                    <h1 class="font-bold text-sm capitalize truncate w-32">__CLIENT__</h1>
+                    <span class="text-[10px] text-slate-400 uppercase">__INDUSTRY__</span>
                 </div>
             </div>
             <nav class="flex-1 px-4 py-6 space-y-2">
@@ -132,7 +134,7 @@ resource "aws_instance" "app_server" {
             <div id="chat-box" class="flex-1 p-8 overflow-y-auto space-y-4">
                 <div class="flex gap-4">
                     <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
-                    <div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$MSG</div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">__MSG__</div>
                 </div>
             </div>
 
@@ -145,8 +147,8 @@ resource "aws_instance" "app_server" {
         </main>
 
         <script>
-            // LÓGICA DE CLIENTE
-            const cfg = { p: "$PAYMENTS", v: "$VIP", url: "$CHAT_URL" };
+            // LÓGICA DE CLIENTE (Segura)
+            const cfg = { p: "__PAYMENTS__", v: "__VIP__", url: "__CHAT_URL__" };
             
             if(cfg.p === 'true') document.getElementById('mod-pay').classList.remove('hidden');
             if(cfg.v === 'true') document.getElementById('mod-vip').classList.remove('hidden');
@@ -159,7 +161,8 @@ resource "aws_instance" "app_server" {
                 const txt = inp.value.trim();
                 if(!txt) return;
                 
-                box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">$${txt}</div></div>\`;
+                // Backticks puros de JS (ahora seguros)
+                box.innerHTML += `<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">\${txt}</div></div>`;
                 inp.value = '';
                 box.scrollTop = box.scrollHeight;
                 
@@ -172,7 +175,7 @@ resource "aws_instance" "app_server" {
                     const d = await res.json();
                     
                     const respuesta = d.output || "Comando procesado.";
-                    box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$${respuesta}</div></div>\`;
+                    box.innerHTML += `<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">\${respuesta}</div></div>`;
                     box.scrollTop = box.scrollHeight;
                 } catch(e) { console.error(e); }
             });
@@ -181,7 +184,17 @@ resource "aws_instance" "app_server" {
     </html>
 HTML
 
-    # --- 5. Permisos y Reinicio final (AHORA SÍ FUERA DEL HTML) ---
+    # 6. REEMPLAZO DE VARIABLES (Inyección segura con SED)
+    # Usamos | como separador para que no falle con las URL
+    sed -i "s|__CLIENT__|$CLIENT|g" /var/www/html/index.html
+    sed -i "s|__INDUSTRY__|$INDUSTRY|g" /var/www/html/index.html
+    sed -i "s|__LOGO__|$LOGO|g" /var/www/html/index.html
+    sed -i "s|__MSG__|$MSG|g" /var/www/html/index.html
+    sed -i "s|__PAYMENTS__|$PAYMENTS|g" /var/www/html/index.html
+    sed -i "s|__VIP__|$VIP|g" /var/www/html/index.html
+    sed -i "s|__CHAT_URL__|$CHAT_URL|g" /var/www/html/index.html
+
+    # 7. Permisos y Reinicio
     chown -R www-data:www-data /var/www/html
     chmod 755 /var/www/html
     systemctl restart nginx
