@@ -69,19 +69,19 @@ resource "aws_instance" "app_server" {
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- SCRIPT DE INICIO ROBUSTO ---
+  # --- SCRIPT DE INICIO ---
   user_data = <<-EOF
     #!/bin/bash
     
     # 1. Espera inicial
     sleep 30
     
-    # 2. Instalación Nginx
+    # 2. Instalación
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y nginx jq
     
-    # 3. Limpieza
+    # 3. Limpieza de Nginx default
     rm -rf /var/www/html/*
     
     # 4. Capturar variables de Terraform en Bash
@@ -93,9 +93,9 @@ resource "aws_instance" "app_server" {
     VIP="${var.enable_vip}"           
     CHAT_URL="${var.n8n_chat_url}"
 
-    # 5. CREAR HTML USANDO "QUOTED HEREDOC" (<<'HTML')
-    # Las comillas simples en 'HTML' evitan que Bash intente ejecutar el JS.
-    # Usamos PLACEHOLDERS (__CLIENT__, __LOGO__) para reemplazar después.
+    # 5. CREAR HTML
+    # Usamos 'HTML' (con comillas simples) para que Bash no expanda variables.
+    # Usamos $$ para que Terraform no expanda variables.
     
     cat <<'HTML' > /var/www/html/index.html
     <!DOCTYPE html>
@@ -147,7 +147,7 @@ resource "aws_instance" "app_server" {
         </main>
 
         <script>
-            // LÓGICA DE CLIENTE (Segura)
+            // LÓGICA DE CLIENTE
             const cfg = { p: "__PAYMENTS__", v: "__VIP__", url: "__CHAT_URL__" };
             
             if(cfg.p === 'true') document.getElementById('mod-pay').classList.remove('hidden');
@@ -161,8 +161,9 @@ resource "aws_instance" "app_server" {
                 const txt = inp.value.trim();
                 if(!txt) return;
                 
-                // Backticks puros de JS (ahora seguros)
-                box.innerHTML += `<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">\${txt}</div></div>`;
+                // --- CORRECCIÓN FINAL AQUÍ ---
+                // Usamos $$ para que Terraform imprima un solo $ en el archivo final
+                box.innerHTML += `<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">$${txt}</div></div>`;
                 inp.value = '';
                 box.scrollTop = box.scrollHeight;
                 
@@ -175,7 +176,8 @@ resource "aws_instance" "app_server" {
                     const d = await res.json();
                     
                     const respuesta = d.output || "Comando procesado.";
-                    box.innerHTML += `<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">\${respuesta}</div></div>`;
+                    // --- CORRECCIÓN FINAL AQUÍ TAMBIÉN ---
+                    box.innerHTML += `<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$${respuesta}</div></div>`;
                     box.scrollTop = box.scrollHeight;
                 } catch(e) { console.error(e); }
             });
@@ -184,8 +186,8 @@ resource "aws_instance" "app_server" {
     </html>
 HTML
 
-    # 6. REEMPLAZO DE VARIABLES (Inyección segura con SED)
-    # Usamos | como separador para que no falle con las URL
+    # 6. INYECCIÓN DE VARIABLES (Segura con SED)
+    # Usamos | como separador para evitar errores con URLs
     sed -i "s|__CLIENT__|$CLIENT|g" /var/www/html/index.html
     sed -i "s|__INDUSTRY__|$INDUSTRY|g" /var/www/html/index.html
     sed -i "s|__LOGO__|$LOGO|g" /var/www/html/index.html
