@@ -7,11 +7,10 @@ terraform {
   }
 }
 
-# --- VARIABLES ---
+# --- SOLO ESTAS 3 VARIABLES SON NECESARIAS AHORA ---
 variable "instance_size" { type = string } 
 variable "client_id" { type = string }
-# Esta es la nueva variable mágica que trae todo el diseño de Gemini
-variable "html_base64" { type = string }
+variable "html_base64" { type = string } # <--- Esta recibe el diseño de Gemini
 
 provider "aws" {
   region = "us-east-1"
@@ -58,30 +57,19 @@ resource "aws_instance" "app_server" {
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- SCRIPT DE INICIO (ESTRATEGIA BASE64) ---
-  # Esta es la forma más robusta que existe. 
-  # No hay riesgo de comillas rotas ni inyecciones de código.
-  
+  # --- DESPLIEGUE MÁGICO ---
   user_data = <<-EOF
     #!/bin/bash
-    
-    # 1. Espera inicial
     sleep 30
-    
-    # 2. Instalación
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y nginx coreutils
     
-    # 3. Limpieza
     rm -rf /var/www/html/*
     
-    # 4. DECODIFICAR E INSTALAR EL SITIO WEB
-    # Terraform inyecta el string Base64 aquí, y Linux lo convierte en HTML real.
-    
+    # Aquí Terraform pega el Base64 y Linux lo convierte en archivo HTML
     echo "${var.html_base64}" | base64 -d > /var/www/html/index.html
 
-    # 5. Permisos y Reinicio
     chown -R www-data:www-data /var/www/html
     chmod 755 /var/www/html
     systemctl restart nginx

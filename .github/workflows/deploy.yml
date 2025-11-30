@@ -16,38 +16,42 @@ jobs:
           terraform_wrapper: false
 
       - name: Inicializar Terraform
+        # Asegúrate que tu main.tf está en la carpeta 'terraform'. 
+        # Si lo moviste a la raíz, borra la línea 'working-directory'.
         working-directory: ./terraform
         run: terraform init
         env:
-          # Le pasamos las llaves de AWS a Terraform
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Crear Servidor en AWS
+      - name: Crear Servidor en AWS (Apply)
         working-directory: ./terraform
-        run: |
-          terraform apply -auto-approve \
-            -var="client_id=${{ github.event.client_payload.CLIENT_ID }}" \
-            -var="instance_size=${{ github.event.client_payload.INSTANCE_SIZE }}" \
-            -var="logo_url='${{ github.event.client_payload.ENV_VARS.LOGO_URL }}'" \
-            -var="industry='${{ github.event.client_payload.ENV_VARS.INDUSTRY }}'" \
-            -var="welcome_msg='${{ github.event.client_payload.ENV_VARS.WELCOME_MESSAGE }}'" \
-            -var="enable_payments=${{ github.event.client_payload.ENV_VARS.ENABLE_PAYMENTS }}" \
-            -var="enable_vip=${{ github.event.client_payload.ENV_VARS.ENABLE_VIP_SCORING }}"
+        # CAMBIO CRÍTICO: Usamos variables de entorno (TF_VAR_) en lugar de flags (-var).
+        # Esto evita que el string Base64 se rompa por longitud o caracteres especiales.
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          
+          # 1. Variables de Infraestructura
+          TF_VAR_client_id: ${{ github.event.client_payload.CLIENT_ID }}
+          TF_VAR_instance_size: ${{ github.event.client_payload.INSTANCE_SIZE }}
+          
+          # 2. Variable de Diseño (El HTML encriptado que viene de n8n)
+          TF_VAR_html_base64: ${{ github.event.client_payload.HTML_B64 }}
+          
+        run: terraform apply -auto-approve
 
       - name: Obtener IP del Output
         id: get_ip
         working-directory: ./terraform
         run: |
-          # Extraemos la IP limpia del output de Terraform
           SERVER_IP=$(terraform output -raw server_ip)
           echo "SERVER_IP=$SERVER_IP" >> $GITHUB_ENV
+          echo "IP Desplegada: $SERVER_IP"
 
       - name: 🔔 Notificar a n8n (Email)
         run: |
+          # Verifica que esta URL sea la correcta de tu webhook de n8n
           curl -X POST https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/send-credentials \
           -H "Content-Type: application/json" \
           -d '{
