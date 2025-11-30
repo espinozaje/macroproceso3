@@ -82,10 +82,10 @@ resource "aws_instance" "app_server" {
     apt-get update
     apt-get install -y nginx jq
     
-    # 3. LIMPIEZA: Borramos la página por defecto de Nginx
+    # 3. LIMPIEZA
     rm -rf /var/www/html/*
     
-    # Variables de Terraform (Un solo $ para que Terraform las reemplace)
+    # Variables Bash
     CLIENT="${var.client_id}"
     INDUSTRY="${var.industry}"
     LOGO="${var.logo_url}"
@@ -159,7 +159,6 @@ resource "aws_instance" "app_server" {
                 const txt = inp.value.trim();
                 if(!txt) return;
                 
-                // AQUÍ ESTABA EL ERROR: Usamos doble $$ para escapar la variable de JS
                 box.innerHTML += \`<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">$${txt}</div></div>\`;
                 inp.value = '';
                 box.scrollTop = box.scrollHeight;
@@ -173,7 +172,6 @@ resource "aws_instance" "app_server" {
                     const d = await res.json();
                     
                     const respuesta = d.output || "Comando procesado.";
-                    // AQUÍ TAMBIÉN: Doble $$
                     box.innerHTML += \`<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$${respuesta}</div></div>\`;
                     box.scrollTop = box.scrollHeight;
                 } catch(e) { console.error(e); }
@@ -181,8 +179,9 @@ resource "aws_instance" "app_server" {
         </script>
     </body>
     </html>
-    
-    # 5. Permisos y Reinicio final
+HTML
+
+    # --- 5. Permisos y Reinicio final (AHORA SÍ FUERA DEL HTML) ---
     chown -R www-data:www-data /var/www/html
     chmod 755 /var/www/html
     systemctl restart nginx
