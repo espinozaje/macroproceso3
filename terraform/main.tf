@@ -63,59 +63,65 @@ data "aws_ami" "ubuntu" {
 # --- 3. SERVIDOR ---
 resource "aws_instance" "app_server" {
   ami = data.aws_ami.ubuntu.id
-  # Lógica de tamaño
   instance_type = var.instance_size == "s-2vcpu-2gb" ? "t3.small" : "t2.micro"
-  
   vpc_security_group_ids = [aws_security_group.web_sg.id]
   tags = { Name = "SaaS-${var.client_id}" }
 
-  # --- SCRIPT DE INICIO ---
+  # --- SCRIPT DE INICIO (ESTRATEGIA JSON SAFE) ---
   user_data = <<-EOF
     #!/bin/bash
     
-    # 1. Espera inicial
+    # 1. Espera de seguridad
     sleep 30
     
-    # 2. Instalación
+    # 2. Instalación de paquetes necesarios
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y nginx jq
     
-    # 3. Limpieza de Nginx default
+    # 3. Limpieza
     rm -rf /var/www/html/*
     
-    # 4. Capturar variables de Terraform en Bash
-    CLIENT="${var.client_id}"
-    INDUSTRY="${var.industry}"
-    LOGO="${var.logo_url}"
-    MSG="${var.welcome_msg}"
-    PAYMENTS="${var.enable_payments}" 
-    VIP="${var.enable_vip}"           
-    CHAT_URL="${var.n8n_chat_url}"
-
-    # 5. CREAR HTML
-    # Usamos 'HTML' (con comillas simples) para que Bash no expanda variables.
-    # Usamos $$ para que Terraform no expanda variables.
+    # 4. Generar archivo de configuración seguro (env.json)
+    # Usamos jq para crear un JSON válido, esto evita errores de sintaxis en Bash
+    # aunque tus variables tengan comillas, espacios o caracteres raros.
     
+    jq -n \
+      --arg c "${var.client_id}" \
+      --arg i "${var.industry}" \
+      --arg l "${var.logo_url}" \
+      --arg m "${var.welcome_msg}" \
+      --arg p "${var.enable_payments}" \
+      --arg v "${var.enable_vip}" \
+      --arg u "${var.n8n_chat_url}" \
+      '{client: $c, industry: $i, logo: $l, msg: $m, payments: $p, vip: $v, url: $u}' \
+      > /var/www/html/env.json
+
+    # 5. Crear HTML Estático (Sin variables de bash, usando JavaScript para leer el JSON)
     cat <<'HTML' > /var/www/html/index.html
     <!DOCTYPE html>
     <html lang="es">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panel | __CLIENT__</title>
+        <title>Panel de Control</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-        <style>body{font-family:'Inter',sans-serif}</style>
+        <style>
+            body{font-family:'Inter',sans-serif}
+            .fade-in { animation: fadeIn 0.5s ease-in; }
+            @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        </style>
     </head>
     <body class="bg-slate-100 h-screen flex overflow-hidden">
+        
         <aside class="w-64 bg-slate-900 text-white flex flex-col z-20 shadow-xl">
             <div class="h-20 flex items-center gap-3 px-6 border-b border-slate-800">
-                <img src="__LOGO__" onerror="this.src='https://ui-avatars.com/api/?name=__CLIENT__&background=random'" class="w-10 h-10 rounded bg-white p-1">
+                <img id="ui-logo" src="" class="w-10 h-10 rounded bg-white p-1 object-contain">
                 <div>
-                    <h1 class="font-bold text-sm capitalize truncate w-32">__CLIENT__</h1>
-                    <span class="text-[10px] text-slate-400 uppercase">__INDUSTRY__</span>
+                    <h1 id="ui-client" class="font-bold text-sm capitalize truncate w-32">Cargando...</h1>
+                    <span id="ui-industry" class="text-[10px] text-slate-400 uppercase">...</span>
                 </div>
             </div>
             <nav class="flex-1 px-4 py-6 space-y-2">
@@ -127,16 +133,12 @@ resource "aws_instance" "app_server" {
 
         <main class="flex-1 flex flex-col bg-slate-50 relative">
             <header class="h-16 bg-white border-b flex items-center px-8 justify-between">
-                <h2 class="font-bold text-slate-700">Dashboard de Control</h2>
-                <div class="text-xs text-green-600 font-medium">● Sistema Operativo</div>
+                <h2 class="font-bold text-slate-700">Dashboard</h2>
+                <div class="text-xs text-green-600 font-medium flex items-center gap-1"><span class="w-2 h-2 bg-green-500 rounded-full"></span> Sistema Online</div>
             </header>
 
             <div id="chat-box" class="flex-1 p-8 overflow-y-auto space-y-4">
-                <div class="flex gap-4">
-                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0"><i class="fa-solid fa-robot"></i></div>
-                    <div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">__MSG__</div>
                 </div>
-            </div>
 
             <div class="p-6 bg-white border-t">
                 <form id="chat-form" class="flex gap-2 max-w-4xl mx-auto">
@@ -147,56 +149,73 @@ resource "aws_instance" "app_server" {
         </main>
 
         <script>
-            // LÓGICA DE CLIENTE
-            const cfg = { p: "__PAYMENTS__", v: "__VIP__", url: "__CHAT_URL__" };
-            
-            if(cfg.p === 'true') document.getElementById('mod-pay').classList.remove('hidden');
-            if(cfg.v === 'true') document.getElementById('mod-vip').classList.remove('hidden');
+            // 1. Cargar Configuración desde env.json
+            fetch('env.json')
+                .then(response => response.json())
+                .then(config => {
+                    initSystem(config);
+                })
+                .catch(err => console.error("Error cargando configuración:", err));
 
             const box = document.getElementById('chat-box');
-            
-            document.getElementById('chat-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const inp = document.getElementById('in');
-                const txt = inp.value.trim();
-                if(!txt) return;
+
+            function initSystem(cfg) {
+                // Actualizar UI con datos del cliente
+                document.title = 'Panel | ' + cfg.client;
+                document.getElementById('ui-client').textContent = cfg.client;
+                document.getElementById('ui-industry').textContent = cfg.industry;
                 
-                // --- CORRECCIÓN FINAL AQUÍ ---
-                // Usamos $$ para que Terraform imprima un solo $ en el archivo final
-                box.innerHTML += `<div class="flex gap-4 flex-row-reverse"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">$${txt}</div></div>`;
-                inp.value = '';
-                box.scrollTop = box.scrollHeight;
-                
-                try {
-                    const res = await fetch(cfg.url, {
-                        method: 'POST',
-                        headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({message: txt})
-                    });
-                    const d = await res.json();
+                const logo = document.getElementById('ui-logo');
+                logo.src = cfg.logo;
+                logo.onerror = function() { 
+                    this.src = 'https://ui-avatars.com/api/?name=' + cfg.client + '&background=random'; 
+                };
+
+                // Activar módulos
+                if(cfg.payments === 'true') document.getElementById('mod-pay').classList.remove('hidden');
+                if(cfg.vip === 'true') document.getElementById('mod-vip').classList.remove('hidden');
+
+                // Mensaje de Bienvenida Inicial
+                // Usamos doble $$ para las variables de template literals de JS
+                box.innerHTML = `<div class="flex gap-4 fade-in"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$${cfg.msg}</div></div>`;
+
+                // Configurar Chat
+                setupChat(cfg.url);
+            }
+
+            function setupChat(webhookUrl) {
+                document.getElementById('chat-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const inp = document.getElementById('in');
+                    const txt = inp.value.trim();
+                    if(!txt) return;
                     
-                    const respuesta = d.output || "Comando procesado.";
-                    // --- CORRECCIÓN FINAL AQUÍ TAMBIÉN ---
-                    box.innerHTML += `<div class="flex gap-4 mt-4"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$${respuesta}</div></div>`;
+                    // Mensaje Usuario
+                    box.innerHTML += `<div class="flex gap-4 flex-row-reverse fade-in"><div class="bg-blue-600 text-white p-4 rounded-xl text-sm shadow-md">$${txt}</div></div>`;
+                    inp.value = '';
                     box.scrollTop = box.scrollHeight;
-                } catch(e) { console.error(e); }
-            });
+                    
+                    try {
+                        const res = await fetch(webhookUrl, {
+                            method: 'POST',
+                            headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({message: txt})
+                        });
+                        const d = await res.json();
+                        const respuesta = d.output || "Comando recibido.";
+                        
+                        // Mensaje Bot
+                        box.innerHTML += `<div class="flex gap-4 mt-4 fade-in"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i class="fa-solid fa-robot"></i></div><div class="bg-white p-4 rounded-xl shadow-sm text-sm border border-slate-100">$${respuesta}</div></div>`;
+                        box.scrollTop = box.scrollHeight;
+                    } catch(e) { console.error(e); }
+                });
+            }
         </script>
     </body>
     </html>
 HTML
 
-    # 6. INYECCIÓN DE VARIABLES (Segura con SED)
-    # Usamos | como separador para evitar errores con URLs
-    sed -i "s|__CLIENT__|$CLIENT|g" /var/www/html/index.html
-    sed -i "s|__INDUSTRY__|$INDUSTRY|g" /var/www/html/index.html
-    sed -i "s|__LOGO__|$LOGO|g" /var/www/html/index.html
-    sed -i "s|__MSG__|$MSG|g" /var/www/html/index.html
-    sed -i "s|__PAYMENTS__|$PAYMENTS|g" /var/www/html/index.html
-    sed -i "s|__VIP__|$VIP|g" /var/www/html/index.html
-    sed -i "s|__CHAT_URL__|$CHAT_URL|g" /var/www/html/index.html
-
-    # 7. Permisos y Reinicio
+    # 6. Permisos y Reinicio
     chown -R www-data:www-data /var/www/html
     chmod 755 /var/www/html
     systemctl restart nginx
