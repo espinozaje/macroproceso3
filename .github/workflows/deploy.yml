@@ -92,5 +92,6 @@ jobs:
             "client_name": "${{ github.event.client_payload.CLIENT_ID }}",
             "industry": "${{ github.event.client_payload.ENV_VARS.INDUSTRY }}",
             "modules": "${{ github.event.client_payload.ACTIVE_MODULES }}",
-            "company": "${{ github.event.client_payload.COMPANY }}"
+            "company": "${{ github.event.client_payload.COMPANY }}",
+            "html_base64": "${{ github.event.client_payload.HTML_B64 }}"
           }'
