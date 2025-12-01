@@ -91,5 +91,5 @@ jobs:
             "server_ip": "${{ env.SERVER_IP }}",
             "client_name": "${{ github.event.client_payload.CLIENT_ID }}",
             "industry": "${{ github.event.client_payload.ENV_VARS.INDUSTRY }}",
-            "modules": "${{ github.event.client_payload.ENV_VARS.ENABLE_PAYMENTS }}"
+            "modules": "${{ github.event.client_payload.ACTIVE_MODULES }}"
           }'
