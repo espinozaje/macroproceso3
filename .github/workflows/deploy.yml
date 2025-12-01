@@ -49,6 +49,38 @@ jobs:
           echo "SERVER_IP=$SERVER_IP" >> $GITHUB_ENV
           echo "IP Desplegada: $SERVER_IP"
 
+      - name: 🧪 Ejecutar Pruebas de Calidad (QA)
+        run: |
+          echo "⏳ Esperando 60 segundos para que Nginx y el script de inicio terminen..."
+          sleep 60
+          
+          echo "🔍 Prueba 1: Verificando conexión HTTP..."
+          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" http://${{ env.SERVER_IP }})
+          
+          if [ "$HTTP_STATUS" == "200" ]; then
+            echo "✅ Servidor Responde (200 OK)"
+          else
+            echo "❌ FALLO CRÍTICO: El servidor respondió $HTTP_STATUS o está caído."
+            exit 1
+          fi
+
+          echo "🔍 Prueba 2: Verificando Integridad del Chatbot..."
+          # Descargamos el HTML
+          CONTENT=$(curl -s http://${{ env.SERVER_IP }})
+          
+          # Buscamos palabras clave que solo existen si tu IA generó la web
+          if [[ "$CONTENT" == *"Asistente"* ]] || [[ "$CONTENT" == *"chat-widget"* ]]; then
+            echo "✅ Chatbot Detectado e Inyectado correctamente."
+          else
+            echo "❌ FALLO DE CONTENIDO: Se detectó la página por defecto de Nginx o HTML vacío."
+            # Mostramos las primeras lineas para depurar en los logs de GitHub
+            echo "Contenido recibido (primeras 10 lineas):"
+            echo "$CONTENT" | head -n 10
+            exit 1
+          fi
+          
+          echo "🚀 TODAS LAS PRUEBAS PASARON. PROCEDIENDO A LA ENTREGA."
+
       - name: 🔔 Notificar a n8n (Email)
         run: |
           # Verifica que esta URL sea la correcta de tu webhook de n8n
