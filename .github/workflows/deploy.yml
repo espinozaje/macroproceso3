@@ -45,9 +45,17 @@ jobs:
         id: get_ip
         working-directory: ./terraform
         run: |
+          # 1. Obtener IP
           SERVER_IP=$(terraform output -raw server_ip)
           echo "SERVER_IP=$SERVER_IP" >> $GITHUB_ENV
-          echo "IP Desplegada: $SERVER_IP"
+          
+          # 2. Obtener INSTANCE_ID (¡NUEVO!)
+          INSTANCE_ID=$(terraform output -raw instance_id)
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+          
+          echo "✅ Despliegue Exitoso"
+          echo "IP: $SERVER_IP"
+          echo "ID: $INSTANCE_ID"
 
       - name: 🧪 Ejecutar Pruebas de Calidad (QA)
         run: |
@@ -89,6 +97,7 @@ jobs:
           -d '{
             "email": "${{ github.event.client_payload.CLIENT_EMAIL }}",
             "server_ip": "${{ env.SERVER_IP }}",
+            "instance_id": "${{ env.INSTANCE_ID }}",
             "client_name": "${{ github.event.client_payload.CLIENT_ID }}",
             "industry": "${{ github.event.client_payload.ENV_VARS.INDUSTRY }}",
             "modules": "${{ github.event.client_payload.ACTIVE_MODULES }}",
