@@ -84,7 +84,7 @@ jobs:
       - name: 🔔 Notificar a n8n (Email)
         run: |
           # Verifica que esta URL sea la correcta de tu webhook de n8n
-          curl -X POST https://dot-mineral-advancement-skirt.trycloudflare.com/webhook-test/send-credentials \
+          curl -X POST https://dot-mineral-advancement-skirt.trycloudflare.com/webhook/send-credentials \
           -H "Content-Type: application/json" \
           -d '{
             "email": "${{ github.event.client_payload.CLIENT_EMAIL }}",
