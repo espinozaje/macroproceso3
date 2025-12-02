@@ -123,8 +123,7 @@ resource "aws_instance" "app_server" {
 
 output "server_ip" { value = aws_instance.app_server.public_ip }
 
-# Agrega esto al final de main.tf
 output "instance_id" {
   description = "ID de la instancia EC2 creada"
-  value       = aws_instance.web_server.id
+  value       = aws_instance.app_server.id
 }
